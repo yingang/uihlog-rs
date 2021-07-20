@@ -38,15 +38,15 @@ impl LogLine {
     }
 }
 
-pub struct UIHLog {
+pub struct LogParser {
     // cache the last parsed timestamp for performance improvement
     last_timestamp_string: String,
     last_parsed_timestamp: String,
 }
 
-impl UIHLog {
-    pub fn new() -> UIHLog {
-        UIHLog { last_timestamp_string: "".into(), last_parsed_timestamp: "".into() }
+impl LogParser {
+    pub fn new() -> LogParser {
+        LogParser { last_timestamp_string: "".into(), last_parsed_timestamp: "".into() }
     }
 
     pub fn parse_async(&mut self, content: String, sender: mpsc::Sender<Vec<LogLine>>) {

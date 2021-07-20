@@ -5,7 +5,7 @@ mod sorted_file_list;
 use sorted_file_list::SortedFileList;
 
 mod log_parser;
-use log_parser::UIHLog;
+use log_parser::LogParser;
 use log_parser::LogLine;
 
 use std::collections::VecDeque;
@@ -46,7 +46,7 @@ fn parse_folder(folder: &Path) {
         if let Some(content) = read_file(&path) {
             println!("start a new thread at {:?} later", SystemTime::now().duration_since(start).unwrap());
             thread::spawn(move || {
-                let mut parser = UIHLog::new();
+                let mut parser = LogParser::new();
                 parser.parse_async(content, tx);
             });
             rxs.push_back(rx);
@@ -65,7 +65,7 @@ fn parse_folder(folder: &Path) {
                 if let Some(content) = read_file(&path) {
                     println!("start a new thread at {:?} later", SystemTime::now().duration_since(start).unwrap());
                     thread::spawn(|| {
-                        let mut parser = UIHLog::new();
+                        let mut parser = LogParser::new();
                         parser.parse_async(content, tx);
                     });
                     rxs.push_back(rx);
@@ -87,7 +87,7 @@ fn parse_file(filepath: &Path) {
     if let Some(content) = read_file(&filepath) {
         let output = PathBuf::from(filepath.to_str().unwrap().to_string() + ".txt");
         if let Ok(mut f) = File::create(&output) {
-            let mut parser = UIHLog::new();
+            let mut parser = LogParser::new();
             let lines = parser.parse_sync(content);
             for line in &lines {
                 if let Err(_) = f.write(line.content.as_bytes()) {
