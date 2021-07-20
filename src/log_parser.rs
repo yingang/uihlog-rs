@@ -134,8 +134,8 @@ impl UIHLog {
         }
     }
 
-       // Example: LOG_DEV_WARNING => DEV_WARN, etc.
-       fn parse_level(&mut self, buf: &str) -> String {
+    // Example: LOG_DEV_WARNING => DEV_WARN, etc.
+    fn parse_level(&mut self, buf: &str) -> String {
         if let Some(ch) = buf.chars().nth(8) {
             return match ch {
                 // INFO or WARNING

@@ -4,9 +4,9 @@ use cached_writer::CachedWriter;
 mod sorted_file_list;
 use sorted_file_list::SortedFileList;
 
-mod uihlog;
-use uihlog::UIHLog;
-use uihlog::LogLine;
+mod log_parser;
+use log_parser::UIHLog;
+use log_parser::LogLine;
 
 use std::collections::VecDeque;
 use std::env;
