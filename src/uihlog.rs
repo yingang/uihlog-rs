@@ -1,19 +1,9 @@
-use crate::cached_writer::CachedWriter;
-
 extern crate chrono;
 use chrono::prelude::*;
 
-use std::fs;
-use std::fs::File;
-use std::io;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::sync::mpsc;
 
-const MAX_LOGFILE_SIZE: usize = 10 * 1024 * 1024;         // 10 MB per .uihlog file
 const MAX_LOGLINE_LENGTH: usize = 1024;                   // in bytes, for any line in the original .uihlog file
-
-const LOGFILE_BUFFER_SIZE: usize = 2 * MAX_LOGFILE_SIZE;
 const TYPICAL_LOGLINE_COUNT: usize = 100_000;
 
 enum LogField
@@ -36,10 +26,10 @@ impl Into<usize> for LogField {
     }
 }
 
-struct LogLine {
-    src: String,
-    pid: String,
-    content: Box<String>,    // TODO: use shared pointer
+pub struct LogLine {
+    pub src: String,
+    pub pid: String,
+    pub content: Box<String>,
 }
 
 impl LogLine {
@@ -59,50 +49,15 @@ impl UIHLog {
         UIHLog { last_timestamp_string: "".into(), last_parsed_timestamp: "".into() }
     }
 
-    pub fn parse_folder(&mut self, folder: &Path) -> io::Result<()> {
-        println!("parse folder: {:?}", folder);
-
-        let mut writer = CachedWriter::new(folder.to_str().unwrap());
-        let mut data = String::with_capacity(LOGFILE_BUFFER_SIZE);
-        let files = self.get_ordered_file_list(folder)?;
-        for file in &files {
-            let start = SystemTime::now();
-            print!("{:?} ", file);
-
-            let mut f = File::open(file)?;
-            data.clear();
-            f.read_to_string(&mut data)?;
-            let lines = self.parse_buffer(&data);
-            for line in lines {
-                writer.write(&line.src, line.content.clone())?;
-                writer.write(&line.pid, line.content.clone())?;
-            }
-            println!("{:?}", SystemTime::now().duration_since(start).unwrap());
+    pub fn parse_async(&mut self, content: String, sender: mpsc::Sender<Vec<LogLine>>) {
+        let lines = self.parse_buffer(&content);
+        if let Err(_) = sender.send(lines) {
+            println!("failed to send parsed result!");
         }
-        let start = SystemTime::now();
-        writer.flush()?;
-        println!("final flush {:?}", SystemTime::now().duration_since(start).unwrap());
-
-        Ok(())
     }
 
-    pub fn parse_file(&mut self, path: &Path) -> io::Result<()> {
-        let start = SystemTime::now();
-        print!("parse file: {:?} ", path);
-        let f = File::open(path);
-        match f {
-            Ok(mut f) => {
-                let mut data = String::new();
-                f.read_to_string(&mut data)?;
-                let lines = self.parse_buffer(&data);
-                self.save_parsed_file(&lines, path)?;
-            },
-            Err(_) => {
-                println!("failed to open file {:?}", path)
-            }
-        }
-        println!("{:?}", SystemTime::now().duration_since(start).unwrap());
-        Ok(())
+    pub fn parse_sync(&mut self, content: String) -> Vec<LogLine> {
+        self.parse_buffer(&content)
     }
 
     fn parse_buffer(&mut self, data: &str) -> Vec<LogLine> {
@@ -239,35 +194,5 @@ impl UIHLog {
         } else {
             "INVALID_TS".into()
         }
-    }
-    
-    fn get_ordered_file_list(&mut self, folder: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
-        let mut files: Vec<PathBuf> = Vec::new();
-        for path in fs::read_dir(folder)? {
-            let path = path?.path();
-            if path.is_file() && path.extension().unwrap() == "uihlog" {
-                files.push(path);
-            }
-        }
-
-        files.sort_by(|a, b| {
-            let idx_a = a.file_stem().unwrap().to_str().unwrap();
-            let idx_b = b.file_stem().unwrap().to_str().unwrap();
-            idx_a.parse::<i32>().unwrap().cmp(&idx_b.parse::<i32>().unwrap())
-            }
-        );
-        Ok(files)
-    }
-    
-    fn save_parsed_file(&mut self, data: &Vec<LogLine>, path: &Path) -> io::Result<()> {
-        let output = PathBuf::from(path.to_str().unwrap().to_string() + ".txt");
-        if let Ok(mut f) = File::create(output) {
-            for line in data {
-                f.write(line.content.as_bytes())?;
-            }
-        } else {
-            println!("failed to open output file!");
-        }
-        Ok(())
     }
 }

@@ -13,7 +13,7 @@ struct Cache {
 }
 
 impl Cache {
-    fn new() -> Cache { Cache { data: Vec::new(), level: 0} }
+    fn new() -> Cache { Cache { data: Vec::new(), level: 0} }   // TODO: needs to use with_capacity()?
 }
 
 pub struct CachedWriter {
