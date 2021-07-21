@@ -6,18 +6,10 @@ use std::io::Write;
 use std::path::PathBuf;
 
 const OUTPUT_FLUSH_THRESHOLD: usize = 2 * 1024 * 1024;
-
-struct Cache {
-    data: Vec<Box<String>>,
-    level: usize,
-}
-
-impl Cache {
-    fn new() -> Cache { Cache { data: Vec::new(), level: 0} }   // TODO: needs to use with_capacity()?
-}
+const MAX_PARSED_LOGLINE_LENGTH: usize = 2 * 1024;
 
 pub struct CachedWriter {
-    cache: HashMap<String, Cache>,
+    cache: HashMap<String, String>,
     folder: String,
     active_files: HashSet<String>,
 }
@@ -34,16 +26,14 @@ impl CachedWriter {
 
     pub fn write(&mut self, token: &str, content: Box<String>) -> io::Result<()> {
         if !self.cache.contains_key(token) {
-            self.cache.insert(token.to_string(), Cache::new());
+            self.cache.insert(token.to_string(),
+             String::with_capacity(OUTPUT_FLUSH_THRESHOLD + MAX_PARSED_LOGLINE_LENGTH));
         }
 
         let cache = self.cache.get_mut(token).unwrap();
-        let data = &mut cache.data;
-        let level = &mut cache.level;
-        *level += content.len();
-        data.push(content);
+        cache.push_str(&content);
 
-        if *level > OUTPUT_FLUSH_THRESHOLD {
+        if cache.len() > OUTPUT_FLUSH_THRESHOLD {
             self.do_write(token)?;
         }
         Ok(())
@@ -62,15 +52,9 @@ impl CachedWriter {
         };
 
         let cache = self.cache.get_mut(token).unwrap();
-        for line in &cache.data {
-            f.write(line.as_bytes())?;
-        }
+        f.write(cache.as_bytes())?;
 
-        let data = &mut cache.data;
-        let level = &mut cache.level;
-        data.clear();
-        *level = 0;
-
+        cache.clear();
         Ok(())
     }
 
