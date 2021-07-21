@@ -18,7 +18,7 @@ use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 use std::thread;
 
-const MAX_LOGFILE_SIZE: usize = 10 * 1024 * 1024;         // 10 MB per .uihlog file
+const MAX_LOGFILE_SIZE: usize = 10 * 1024 * 1024;       // 10 MB per .uihlog file
 const LOGFILE_BUFFER_SIZE: usize = 2 * MAX_LOGFILE_SIZE;
 
 // 2 or 3 is much faster than other configurations if no file writing (on CPU with 4 physical cores)
@@ -26,10 +26,11 @@ const MAX_WORKING_THREADS: usize = 2;
 
 fn read_file(filepath: &Path) -> Option<String> {
     if let Ok(mut f) = File::open(&filepath) {
-        let mut data = String::with_capacity(LOGFILE_BUFFER_SIZE);
-        if let Ok(_) = f.read_to_string(&mut data) {
-            return Some(data)
-        }        
+        let mut data: Vec<u8> = Vec::with_capacity(LOGFILE_BUFFER_SIZE);
+        if let Ok(_) = f.read_to_end(&mut data) {   // consider log file with invalid UTF8 content
+            let data = String::from_utf8_lossy(&data);
+            return Some(data.into_owned())
+        }
     }
     println!("failed to read from file {:?}", &filepath);
     None
@@ -44,7 +45,7 @@ fn parse_folder(folder: &Path) {
     for _ in 0..thread_count {
         let (tx, rx) = mpsc::channel::<Vec<LogLine>>();
         let path = file_list.next().unwrap();
-        println!("{:?}", &path);
+        println!("{:?}", &path.as_path().file_name().unwrap());
         if let Some(content) = read_file(&path) {
             //println!("start a new thread at {:?} later", SystemTime::now().duration_since(start).unwrap());
             thread::spawn(move || {
@@ -61,10 +62,9 @@ fn parse_folder(folder: &Path) {
             let lines = rx.recv().unwrap();
             //println!("a thread finished at {:?} later", SystemTime::now().duration_since(start).unwrap());
 
-            // TODO: could reuse the previously created threads?
             let (tx, rx) = mpsc::channel::<Vec<LogLine>>();
             if let Some(path) = file_list.next() {
-                println!("{:?}", &path);
+                println!("{:?}", &path.as_path().file_name().unwrap());
                 if let Some(content) = read_file(&path) {
                     //println!("start a new thread at {:?} later", SystemTime::now().duration_since(start).unwrap());
                     thread::spawn(|| {
