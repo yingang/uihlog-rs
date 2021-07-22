@@ -36,23 +36,33 @@ fn read_file(filepath: &Path) -> Option<String> {
     None
 }
 
-fn parse_folder(folder: &Path) {
-    //let start = SystemTime::now();
-    let mut file_list = SortedFileList::new(folder);
-    let thread_count = std::cmp::min(file_list.count(), MAX_WORKING_THREADS);
-
-    let mut rxs: VecDeque<Receiver<Vec<LogLine>>> = VecDeque::new();
-    for _ in 0..thread_count {
-        let (tx, rx) = mpsc::channel::<Vec<LogLine>>();
-        let path = file_list.next().unwrap();
+fn create_worker_thread(file_list: &mut SortedFileList) -> Option<Receiver<Vec<LogLine>>> {
+    let (tx, rx) = mpsc::channel::<Vec<LogLine>>();
+    if let Some(path) = file_list.next() {
         println!("{:?}", &path.as_path().file_name().unwrap());
         if let Some(content) = read_file(&path) {
-            //println!("start a new thread at {:?} later", SystemTime::now().duration_since(start).unwrap());
             thread::spawn(move || {
                 let mut parser = LogParser::new();
                 parser.parse_async(content, tx);
             });
+            return Some(rx);
+        }
+    }
+    None
+}
+
+fn parse_folder(folder: &Path) {
+    //let start = SystemTime::now();
+    let mut file_list = SortedFileList::new(folder);
+    let mut rxs: VecDeque<Receiver<Vec<LogLine>>> = VecDeque::new();
+
+    let thread_count = std::cmp::min(file_list.count(), MAX_WORKING_THREADS);
+    for _ in 0..thread_count {
+        if let Some(rx) = create_worker_thread(&mut file_list) {
+            //println!("start a new thread at {:?} later", SystemTime::now().duration_since(start).unwrap());
             rxs.push_back(rx);
+        } else {
+            break
         }
     }
 
@@ -62,18 +72,11 @@ fn parse_folder(folder: &Path) {
             let lines = rx.recv().unwrap();
             //println!("a thread finished at {:?} later", SystemTime::now().duration_since(start).unwrap());
 
-            let (tx, rx) = mpsc::channel::<Vec<LogLine>>();
-            if let Some(path) = file_list.next() {
-                println!("{:?}", &path.as_path().file_name().unwrap());
-                if let Some(content) = read_file(&path) {
-                    //println!("start a new thread at {:?} later", SystemTime::now().duration_since(start).unwrap());
-                    thread::spawn(|| {
-                        let mut parser = LogParser::new();
-                        parser.parse_async(content, tx);
-                    });
-                    rxs.push_back(rx);
-                }
+            if let Some(rx) = create_worker_thread(&mut file_list) {
+                //println!("start a new thread at {:?} later", SystemTime::now().duration_since(start).unwrap());
+                rxs.push_back(rx);
             }
+
             //let start = SystemTime::now();
             for line in lines {
                 writer.write(&line.src, line.content.clone()).unwrap();
