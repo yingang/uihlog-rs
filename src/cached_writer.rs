@@ -59,14 +59,9 @@ impl CachedWriter {
     }
 
     pub fn flush(&mut self) -> io::Result<()> {
-        // TODO: any better way to get keys without keeping an active reference?
-        let mut tokens: Vec<String> = Vec::new();
-        for (k, _) in &self.cache {
-            tokens.push(k.clone());
-        }
-
+        let tokens: Vec<String> = self.cache.keys().cloned().collect();
         for token in tokens {
-            self.do_write(&token)?;
+            self.do_write(token.as_str())?;
         }
         Ok(())
     }
