@@ -107,6 +107,7 @@ fn parse_file(filepath: &Path) {
 }
 
 fn main() {
+    println!("uihlog reloaded in Rust by YG @ CT-SYS-SE");
     let path = env::args().nth(1).expect("no input file or filepath is specified");
     let path = Path::new(&path);
 
