@@ -1,6 +1,6 @@
 [package]
 name = "uihlog"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["Yin Gang <gang.yin@united-imaging.com>"]
 edition = "2018"
 
@@ -8,3 +8,6 @@ edition = "2018"
 
 [dependencies]
 chrono = "0.4"
+
+[profile.release]
+debug=1

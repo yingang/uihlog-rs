@@ -62,10 +62,10 @@ impl LogParser {
 
     fn parse_buffer(&mut self, data: &str) -> Vec<LogLine> {
         let mut lines = Vec::<LogLine>::with_capacity(TYPICAL_LOGLINE_COUNT);
-        if let Some(idx) = data.find('\x0a') {
+        if let Some(idx) = data.find('\x0a') {  // ETX (End of Text) + LF (Line Feed)
             let mut start = idx + 1;
             loop {
-                match data[start..].find("\x01\x0aLOG") {   // in case there is unexpected line delimiters in the log description
+                match data[start..].find("\x01\x0aLOG") {   // SOH (Start of Heading) + LF + 'LOG' (in case there is invalid content in the log description)
                     Some(to) => {
                         lines.push(self.parse_line(&data[start .. start + to]));
                         start = start + to + 2;
@@ -83,7 +83,7 @@ impl LogParser {
     }
 
     fn parse_line(&mut self, line: &str) -> LogLine {
-        let fields: Vec<&str> = line.split('\x02').collect();
+        let fields: Vec<&str> = line.split('\x02').collect();   // STX (Start of Text)
         if fields.len() < LogField::FieldCount.into() {
             println!("invalid log line!");
             return LogLine::new();
@@ -110,7 +110,7 @@ impl LogParser {
         line.push_str(" ");
 
         let desc = fields[LogField::Description as usize];
-        if let Some(_) = desc.find(|c| c == '\n' || c == '\r') {
+        if let Some(_) = desc.rfind(|c| c == '\n' || c == '\r') {
             let desc = desc.replace('\n', " ").replace('\r', " ");
             line.push_str(&desc);
         } else {
