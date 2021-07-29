@@ -95,19 +95,19 @@ fn parse_file(filepath: &Path) {
         let output = PathBuf::from(filepath.to_str().unwrap().to_string() + ".txt");
         if let Ok(mut f) = File::create(&output) {
             let mut parser = LogParser::new();
-            let lines = parser.parse_sync(content);
-            for line in &lines {
-                if let Err(_) = f.write(line.content.as_bytes()) {
-                    println!("failed to write to file: {:?}", &output);
-                    break
-                }
+            let mut buf = String::with_capacity(20 * 1024 * 1024);
+            for line in &parser.parse_sync(content) {
+                buf.push_str(&line.content);
+            }
+            if let Err(_) = f.write(buf.as_bytes()) {
+                println!("failed to write to file: {:?}", &output);
             }
         }
     }
 }
 
 fn main() {
-    println!("uihlog reloaded in Rust v0.2.4 by YG @ CT-SYS-SE");
+    println!("uihlog reloaded in Rust v0.2.5 YG");
     let path = env::args().nth(1).expect("no input file or filepath is specified");
     let path = Path::new(&path);
 
