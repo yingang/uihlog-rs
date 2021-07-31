@@ -11,7 +11,8 @@ use log_parser::LogLine;
 use std::collections::VecDeque;
 use std::env;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io;
+use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
@@ -51,7 +52,7 @@ fn create_worker_thread(file_list: &mut SortedFileList) -> Option<Receiver<Vec<L
     None
 }
 
-fn parse_folder(folder: &Path) {
+fn parse_folder(folder: &Path) -> io::Result<()> {
     //let start = SystemTime::now();
     let mut file_list = SortedFileList::new(folder);
     let mut rxs: VecDeque<Receiver<Vec<LogLine>>> = VecDeque::new();
@@ -79,43 +80,50 @@ fn parse_folder(folder: &Path) {
 
             //let start = SystemTime::now();
             for line in lines {
-                writer.write(&line.src, line.content.clone()).unwrap();
-                writer.write(&line.pid, line.content.clone()).unwrap();
+                writer.write(&line.src, line.content.clone())?;
+                writer.write(&line.pid, line.content.clone())?;
             }
             //println!("finished writing in {:?}", SystemTime::now().duration_since(start).unwrap());
         } else {
             break
         }
     }
-    writer.flush().unwrap();
+    writer.flush()?;
+    Ok(())
 }
 
-fn parse_file(filepath: &Path) {
+fn parse_file(filepath: &Path) -> io::Result<()> {
     if let Some(content) = read_file(&filepath) {
         let output = PathBuf::from(filepath.to_str().unwrap().to_string() + ".txt");
-        if let Ok(mut f) = File::create(&output) {
-            let mut parser = LogParser::new();
-            let mut buf = String::with_capacity(20 * 1024 * 1024);
-            for line in &parser.parse_sync(content) {
-                buf.push_str(&line.content);
-            }
-            if let Err(_) = f.write(buf.as_bytes()) {
-                println!("failed to write to file: {:?}", &output);
-            }
+        let mut f = BufWriter::new(File::create(&output)?);
+        let mut parser = LogParser::new();
+        for line in &parser.parse_sync(content) {
+            f.write(&line.content.as_bytes())?;
         }
+        f.flush()?;
     }
+    Ok(())
 }
 
 fn main() {
-    println!("uihlog reloaded in Rust v0.2.5 YG");
-    let path = env::args().nth(1).expect("no input file or filepath is specified");
-    let path = Path::new(&path);
+    const VERSION:&'static str = env!("CARGO_PKG_VERSION");
+    println!("uihlog reloaded in Rust v{} YG", VERSION);
 
-    let start = SystemTime::now();
-    if path.is_dir() {
-        parse_folder(path);
-    } else if path.is_file() {
-        parse_file(path);
+    if let Some(path) = env::args().nth(1) {
+        let path = Path::new(&path);
+
+        let start = SystemTime::now();
+        if path.is_dir() {
+            if let Err(_) = parse_folder(path) {
+                println!("failed to parse the folder");
+            }
+        } else if path.is_file() {
+            if let Err(_) = parse_file(path) {
+                println!("failed to parse the file");
+            }
+        }
+        println!("total cost: {:?}", SystemTime::now().duration_since(start).unwrap());
+    } else {
+        println!("no input file or filepath is specified");
     }
-    println!("total cost: {:?}", SystemTime::now().duration_since(start).unwrap());
 }
