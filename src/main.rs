@@ -10,28 +10,23 @@ use log_parser::LogLine;
 
 use std::collections::VecDeque;
 use std::env;
+use std::fs;
 use std::fs::File;
 use std::io;
-use std::io::{BufWriter, Read, Write};
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 use std::thread;
 
-const MAX_LOGFILE_SIZE: usize = 10 * 1024 * 1024;       // 10 MB per .uihlog file
-const LOGFILE_BUFFER_SIZE: usize = 2 * MAX_LOGFILE_SIZE;
-
 // 2 or 3 is much faster than other configurations if no file writing (on CPU with 4 physical cores)
 const MAX_WORKING_THREADS: usize = 2;
 
 fn read_file(filepath: &Path) -> Option<String> {
-    if let Ok(mut f) = File::open(&filepath) {
-        let mut data: Vec<u8> = Vec::with_capacity(LOGFILE_BUFFER_SIZE);
-        if let Ok(_) = f.read_to_end(&mut data) {   // consider log file with invalid UTF8 content
-            let data = String::from_utf8_lossy(&data);
-            return Some(data.into_owned())
-        }
+    if let Ok(data) = fs::read(filepath) {
+        let data = String::from_utf8_lossy(&data);  // consider log file with invalid UTF8 content
+        return Some(data.into_owned())
     }
     println!("failed to read from file {:?}", &filepath);
     None
