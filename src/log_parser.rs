@@ -94,7 +94,7 @@ impl LogParser {
         line.push_str(&self.parse_level(fields[LogField::Level as usize]));
         line.push_str(" ");
 
-        // in case there are unexpected field delimiters ('\x02') in the log descrition
+        // in case there are unexpected field delimiters ('\x02') in the log description
         let server_ts = if fields.len() > LogField::FieldCount as usize {
             fields.len() - 1
         } else {
