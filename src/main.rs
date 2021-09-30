@@ -48,6 +48,10 @@ fn create_worker_thread(file_list: &mut SortedFileList) -> Option<Receiver<Vec<L
 }
 
 fn parse_folder(folder: &Path, pid_output: bool) -> io::Result<()> {
+    if need_pid_output() {
+        println!("pid output is enabled");
+    }
+
     //let start = SystemTime::now();
     let mut file_list = SortedFileList::new(folder);
     let mut rxs: VecDeque<Receiver<Vec<LogLine>>> = VecDeque::new();
@@ -102,6 +106,16 @@ fn parse_file(filepath: &Path) -> io::Result<()> {
     Ok(())
 }
 
+fn need_pid_output() -> bool {
+    match env::args().nth(2) {
+        Some(pid_output) => match pid_output.as_str() {
+            "1" => true,
+            _ => false,
+        },
+        None => false,
+    }
+}
+
 fn main() {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
     println!("uihlog reloaded in Rust v{} YG", VERSION);
@@ -111,11 +125,8 @@ fn main() {
 
         let start = SystemTime::now();
         if path.is_dir() {
-            let pid_output = env::var("UIHLOG_ENABLE_PID_OUTPUT").is_ok();
-            if pid_output {
-                println!("pid output is enabled");
-            }
-            if let Err(_) = parse_folder(path, pid_output) {
+            //let pid_output = env::var("UIHLOG_ENABLE_PID_OUTPUT").is_ok();
+            if let Err(_) = parse_folder(path, need_pid_output()) {
                 println!("failed to parse the folder");
             }
         } else if path.is_file() {

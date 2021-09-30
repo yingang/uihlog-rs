@@ -1,3 +1,3 @@
 @echo off
 
-REG DELETE "HKCU\Environment" /F /V "UIHLOG_ENABLE_PID_OUTPUT"
+reg delete "HKEY_CURRENT_USER\Software\Classes\Directory\shell\unUIHlog-PID" /f
