@@ -1,0 +1,3 @@
+@echo off
+
+setx UIHLOG_ENABLE_PID_OUTPUT 1

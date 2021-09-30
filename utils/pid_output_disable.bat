@@ -1,0 +1,3 @@
+@echo off
+
+REG DELETE "HKCU\Environment" /F /V "UIHLOG_ENABLE_PID_OUTPUT"
