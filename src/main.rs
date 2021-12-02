@@ -120,22 +120,20 @@ fn main() {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
     println!("uihlog reloaded in Rust v{} YG", VERSION);
 
-    if let Some(path) = env::args().nth(1) {
-        let path = Path::new(&path);
+    let path = match env::args().nth(1) {
+        Some(path) => Path::new(&path).to_owned(),
+        None => env::current_dir().unwrap(),
+    };
 
-        let start = SystemTime::now();
-        if path.is_dir() {
-            //let pid_output = env::var("UIHLOG_ENABLE_PID_OUTPUT").is_ok();
-            if let Err(_) = parse_folder(path, need_pid_output()) {
-                println!("failed to parse the folder");
-            }
-        } else if path.is_file() {
-            if let Err(_) = parse_file(path) {
-                println!("failed to parse the file");
-            }
+    let start = SystemTime::now();
+    if path.is_dir() {
+        if let Err(_) = parse_folder(&path, need_pid_output()) {
+            println!("failed to parse the folder");
         }
-        println!("total cost: {:?}", SystemTime::now().duration_since(start).unwrap());
-    } else {
-        println!("no input file or filepath is specified");
+    } else if path.is_file() {
+        if let Err(_) = parse_file(&path) {
+            println!("failed to parse the file");
+        }
     }
+    println!("total cost: {:?}", SystemTime::now().duration_since(start).unwrap());
 }
