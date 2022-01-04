@@ -1,6 +1,6 @@
 [package]
 name = "uihlog"
-version = "0.2.10"
+version = "0.2.11"
 authors = ["Yin Gang <gang.yin@united-imaging.com>"]
 edition = "2018"
 

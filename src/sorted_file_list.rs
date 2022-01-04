@@ -14,18 +14,33 @@ impl SortedFileList {
                 if let Ok(path) = path {
                     let path = path.path();
                     if path.is_file() && path.extension().unwrap() == "uihlog" {
-                        files.push(path); 
+                        if let Some(_) = Self::extract_id(&path) {
+                            files.push(path); 
+                        } else {
+                            println!("invalid file name, skipped: {:?}", &path);
+                        }
                     }
                 }
             }
         }
         files.sort_by(|a, b| {
-            let idx_a = a.file_stem().unwrap().to_str().unwrap();
-            let idx_b = b.file_stem().unwrap().to_str().unwrap();
-            idx_a.parse::<i32>().unwrap().cmp(&idx_b.parse::<i32>().unwrap())
+            let id_a = Self::extract_id(a).unwrap();    // safe to use unwrap here since it has been tested
+            let id_b = Self::extract_id(b).unwrap();
+            id_a.cmp(&id_b)
             }
         );
         SortedFileList { files: files, index: 0 }
+    }
+
+    fn extract_id(path: &PathBuf) -> Option<i32> {
+        if let Some(filename) = path.file_stem().and_then(|f|f.to_str()) {
+            if let Some(idx) = filename.find('.') {
+                if let Ok(id) = filename[..idx].parse::<i32>() {
+                    return Some(id)
+                }
+            }
+        }
+        None
     }
 
     pub fn next(&mut self) -> Option<PathBuf> {
