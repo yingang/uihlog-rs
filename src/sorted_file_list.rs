@@ -34,14 +34,16 @@ impl SortedFileList {
     fn sort_files(files: Vec<PathBuf>) -> Vec<PathBuf> {
         let mut sorted: Vec<PathBuf> = Vec::new();
         for file in files {
-            if file.extension().unwrap() != "uihlog" {
-                continue;
+            if let Some(ext) = file.extension() {
+                if ext != "uihlog" {
+                    continue;
+                }
+                if Self::extract_id(&file) == None {
+                    println!("invalid file name, skipped: {:?}", &file);
+                    continue;
+                }
+                sorted.push(file);
             }
-            if Self::extract_id(&file) == None {
-                println!("invalid file name, skipped: {:?}", &file);
-                continue;
-            }
-            sorted.push(file);
         }
         sorted.sort_by(|a, b| {
             let id_a = Self::extract_id(a).unwrap();    // safe to use unwrap here since it has been tested
@@ -84,7 +86,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extract_id() {
+    fn id_extraction() {
         let path = PathBuf::from(r"c:\test\1.uihlog");
         assert_eq!(SortedFileList::extract_id(&path), Some(1));
 
@@ -93,27 +95,36 @@ mod tests {
     }
 
     #[test]
-    fn it_works() {
+    fn two_files() {
         let files = vec![PathBuf::from(r"c:\2.uihlog"), PathBuf::from(r"c:\1.uihlog")];
         let mut sfl = SortedFileList::do_new(files);
         assert!(sfl.count() == 2);
         assert!(sfl.next().unwrap().to_str().unwrap() == r"c:\1.uihlog");
         assert!(sfl.next().unwrap().to_str().unwrap() == r"c:\2.uihlog");
         assert!(sfl.next().is_none());
+    }
 
+    #[test]
+    fn filenames_with_different_length() {
         let files = vec![PathBuf::from(r"c:\10.uihlog"), PathBuf::from(r"c:\2.uihlog")];
         let mut sfl = SortedFileList::do_new(files);
         assert!(sfl.count() == 2);
         assert!(sfl.next().unwrap().to_str().unwrap() == r"c:\2.uihlog");
         assert!(sfl.next().unwrap().to_str().unwrap() == r"c:\10.uihlog");
         assert!(sfl.next().is_none());
+    }
 
+    #[test]
+    fn empty_folder() {
         let files: Vec<PathBuf> = Vec::new();
         let mut sfl = SortedFileList::do_new(files);
         assert!(sfl.count() == 0);
         assert!(sfl.next().is_none());
+    }
 
-        let files= vec![PathBuf::from(r"c:\thumbs.db"), PathBuf::from(r"c:\invalid.uihlog")];
+    #[test]
+    fn invalid_files() {
+        let files= vec![PathBuf::from(r"c:\thumbs.db"), PathBuf::from(".cargo-lock"), PathBuf::from(r"c:\invalid.uihlog")];
         let mut sfl = SortedFileList::do_new(files);
         assert!(sfl.count() == 0);
         assert!(sfl.next().is_none());

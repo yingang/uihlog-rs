@@ -118,7 +118,7 @@ fn need_pid_output() -> bool {
 
 fn main() {
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-    println!("uihlog reloaded in Rust v{} YG", VERSION);
+    println!("uihlog reloaded in Rust v{}", VERSION);
 
     let path = match env::args().nth(1) {
         Some(path) => Path::new(&path).to_owned(),

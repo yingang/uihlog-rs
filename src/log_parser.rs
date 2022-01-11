@@ -6,6 +6,15 @@ use std::sync::mpsc;
 const MAX_LOGLINE_LENGTH: usize = 1024;                   // in bytes, for any line in the original .uihlog file
 const TYPICAL_LOGLINE_COUNT: usize = 100_000;
 
+const HEADER_END: &str  = "\x03\x0a";       // ETX (End of Text) + LF (\n)
+const HEADER_END_OFFSET: usize = 2;
+
+const LOGGING_END: &str = "\x01\x0a";       // SOH (Start of Heading) + LF (\n)
+const LOGGING_END2: &str = "\x01\x0aLOG";   // SOH (Start of Heading) + LF (\n) + "LOG"
+const LOGGING_END_OFFSET: usize = 2;
+
+const FIELD_DELIM: char = '\x02';           // STX (Start of Text)
+
 enum LogField
 {
     Level = 0,
@@ -32,12 +41,6 @@ pub struct LogLine {
     pub content: Box<String>,
 }
 
-impl LogLine {
-    fn new() -> LogLine {
-        LogLine { src: "".into(), pid: "".into(), content: Box::new("".into()) }
-    }
-}
-
 pub struct LogParser {
     // cache the last parsed timestamp for performance improvement
     last_timestamp_string: String,
@@ -62,17 +65,21 @@ impl LogParser {
 
     fn parse_buffer(&mut self, data: &str) -> Vec<LogLine> {
         let mut lines = Vec::<LogLine>::with_capacity(TYPICAL_LOGLINE_COUNT);
-        if let Some(idx) = data.find('\x0a') {  // ETX (End of Text) + LF (Line Feed)
-            let mut start = idx + 1;
+        if let Some(idx) = data.find(HEADER_END) {
+            let mut start = idx + HEADER_END_OFFSET;
             loop {
-                match data[start..].find("\x01\x0aLOG") {   // SOH (Start of Heading) + LF + 'LOG' (in case there is invalid content in the log description)
+                match data[start..].find(LOGGING_END2) {   // in case there is invalid content in the log description
                     Some(to) => {
-                        lines.push(self.parse_line(&data[start .. start + to]));
-                        start = start + to + 2;
+                        if let Some(line) = self.parse_line(&data[start .. start + to]) {
+                            lines.push(line);
+                        }
+                        start = start + to + LOGGING_END_OFFSET;
                     }
                     None => {
-                        if let Some(to) = data[start..].find("\x01\x0a") {  // for the last line
-                            lines.push(self.parse_line(&data[start .. start + to]));
+                        if let Some(to) = data[start..].find(LOGGING_END) {  // for the last line
+                            if let Some(line) = self.parse_line(&data[start .. start + to]) {
+                                lines.push(line);
+                            }
                         }
                         break
                     }
@@ -82,16 +89,16 @@ impl LogParser {
         lines
     }
 
-    fn parse_line(&mut self, line: &str) -> LogLine {
-        let fields: Vec<&str> = line.split('\x02').collect();   // STX (Start of Text)
+    fn parse_line(&mut self, line: &str) -> Option<LogLine> {
+        let fields: Vec<&str> = line.split(FIELD_DELIM).collect();
         if fields.len() < LogField::FieldCount.into() {
             println!("invalid log line!");
-            return LogLine::new();
+            return None;
         }
 
         // much faster than using '+' to contatenate strings (about one order of magnitude difference)
         let mut line = String::with_capacity(MAX_LOGLINE_LENGTH);
-        line.push_str(&self.parse_level(fields[LogField::Level as usize]));
+        line.push_str(&Self::parse_level(fields[LogField::Level as usize]));
         line.push_str(" ");
 
         // in case there are unexpected field delimiters ('\x02') in the log description
@@ -127,15 +134,15 @@ impl LogParser {
         line.push_str(fields[LogField::Uid as usize]);
         line.push_str("]\n");
 
-        LogLine {
-            src: self.parse_src(fields[LogField::SrcPidTid as usize]),
-            pid: self.parse_pid(fields[LogField::SrcPidTid as usize]).into(),
+        Some(LogLine {
+            src: Self::parse_src(fields[LogField::SrcPidTid as usize]),
+            pid: Self::parse_pid(fields[LogField::SrcPidTid as usize]).into(),
             content: Box::new(line),
-        }
+        })
     }
 
     // Example: LOG_DEV_WARNING => DEV_WARN, etc.
-    fn parse_level(&mut self, buf: &str) -> String {
+    fn parse_level(buf: &str) -> String {
         if let Some(ch) = buf.chars().nth(8) {
             return match ch {
                 // INFO or WARNING
@@ -152,7 +159,7 @@ impl LogParser {
         "INVALID_LEVEL".into()
     }
 
-    fn parse_src(&mut self, buf: &str) -> String {
+    fn parse_src(buf: &str) -> String {
         if let Some(src_end) = buf.find('(') {
             let src = &buf[..src_end];
 
@@ -166,7 +173,7 @@ impl LogParser {
         "INVALID_SRC".into()
     }
 
-    fn parse_pid<'a>(&mut self, buf: &'a str) -> &'a str {
+    fn parse_pid<'a>(buf: &'a str) -> &'a str {
         if let Some(src_end) = buf.find('(') {
             if let Some(pid_end) = buf[src_end..].find(':') {
                 let pid = &buf[src_end + 1 .. src_end + pid_end];
@@ -194,5 +201,60 @@ impl LogParser {
         } else {
             "INVALID_TS".into()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn level_parsing() {
+        assert!(LogParser::parse_level("LOG_DEV_WARNING") == "DEV_WARN ");
+        assert!(LogParser::parse_level("LOG_SVC_INFO") == "SVC_INFO ");
+        assert!(LogParser::parse_level("LOG_SVC_ERROR") == "SVC_ERROR");
+        assert!(LogParser::parse_level("LOG_SVC_XFILE") == "UNKNOWN_LEVEL");
+        assert!(LogParser::parse_level("LOG_SVC") == "INVALID_LEVEL");
+    }
+
+    #[test]
+    fn src_parsing() {
+        assert!(LogParser::parse_src("BAD_SRCPIDTID") == "INVALID_SRC");
+        assert!(LogParser::parse_src("SRC/?\\*:(1:2)") == "SRC_____");
+    }
+
+    #[test]
+    fn pid_parsing() {
+        assert!(LogParser::parse_pid("SRC(1:2)") == "1");
+        assert!(LogParser::parse_pid("SRC") == "INVALID_PID");
+        assert!(LogParser::parse_pid("SRC(1") == "INVALID_PID");
+    }
+
+    #[test]
+    fn three_loggings() {
+        let fields1: Vec<&str> = vec!["LOG_DEV_INFO", "1346714491516", "SRC1(1:2)", "file1.cpp", "128", "FOO1", "0X2005000000000000", "DESC1",                  "1641013262865"];
+        let fields2: Vec<&str> = vec!["LOG_DEV_INFO", "1641013262865", "SRC2(3:4)", "file2.cpp", "256", "FOO2", "0X2008000000000000", "DESC2\rMORE\nEVEN_MORE", "BAD_TIMESTAMP"];
+        let fields3: Vec<&str> = vec!["LOG_DEV_INFO", "1641013262865", "SRC3(5:6)", "file3.cpp", "512", "FOO3", "0X200A000000000000", "DESC3"                                  ];
+
+        let mut logfile = String::with_capacity(MAX_LOGLINE_LENGTH);
+        logfile.push_str(HEADER_END);
+        logfile.push_str(fields1.join(FIELD_DELIM.to_string().as_str()).as_str());
+        logfile.push_str(LOGGING_END);
+        logfile.push_str(fields2.join(FIELD_DELIM.to_string().as_str()).as_str());
+        logfile.push_str(LOGGING_END);
+        logfile.push_str(fields3.join(FIELD_DELIM.to_string().as_str()).as_str());
+        logfile.push_str(LOGGING_END);
+
+        let mut parser = LogParser::new();
+        let lines = parser.parse_sync(logfile);
+        assert!(lines.len() == 2);
+
+        assert!(lines[0].src == "SRC1");
+        assert!(lines[0].pid == "1");
+        assert!(lines[0].content.as_str() == "DEV_INFO  220101 13:01:02.865 [120904 07:21:31.516] SRC1(1:2) DESC1 [FOO1 file1.cpp 128] [0X2005000000000000]\n");
+
+        assert!(lines[1].src == "SRC2");
+        assert!(lines[1].pid == "3");
+        assert!(lines[1].content.as_str() == "DEV_INFO  INVALID_TS [220101 13:01:02.865] SRC2(3:4) DESC2 MORE EVEN_MORE [FOO2 file2.cpp 256] [0X2008000000000000]\n");
     }
 }
