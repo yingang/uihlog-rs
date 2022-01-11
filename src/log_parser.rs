@@ -151,7 +151,7 @@ impl LogParser {
                     level.push_str(" ");
                     level
                 },
-                // ERROR
+                // ERROR (LOG_TRACE_*** would also fall into this category, let it be...)
                 'E' => buf[4..13].into(),
                 _ => "UNKNOWN_LEVEL".into(),
             }
@@ -215,6 +215,7 @@ mod tests {
         assert!(LogParser::parse_level("LOG_SVC_ERROR") == "SVC_ERROR");
         assert!(LogParser::parse_level("LOG_SVC_XFILE") == "UNKNOWN_LEVEL");
         assert!(LogParser::parse_level("LOG_SVC") == "INVALID_LEVEL");
+        assert!(LogParser::parse_level("LOG_TRACE_INFO") == "TRACE_INF")
     }
 
     #[test]
