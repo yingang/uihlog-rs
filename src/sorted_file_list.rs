@@ -95,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    fn two_files() {
+    fn filenames_with_same_length() {
         let files = vec![PathBuf::from(r"c:\2.uihlog"), PathBuf::from(r"c:\1.uihlog")];
         let mut sfl = SortedFileList::do_new(files);
         assert!(sfl.count() == 2);

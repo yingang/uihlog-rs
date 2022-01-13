@@ -3,16 +3,17 @@ use chrono::prelude::*;
 
 use std::sync::mpsc;
 
+const HOUR: i32 = 3600;         // hour in seconds
+const MINUTE: i32 = 60;         // minute in seconds
+
 const MAX_LOGLINE_LENGTH: usize = 1024;                   // in bytes, for any line in the original .uihlog file
 const TYPICAL_LOGLINE_COUNT: usize = 100_000;
 
 const HEADER_END: &str  = "\x03\x0a";       // ETX (End of Text) + LF (\n)
 const HEADER_END_OFFSET: usize = 2;
-
 const LOGGING_END: &str = "\x01\x0a";       // SOH (Start of Heading) + LF (\n)
 const LOGGING_END2: &str = "\x01\x0aLOG";   // SOH (Start of Heading) + LF (\n) + "LOG"
 const LOGGING_END_OFFSET: usize = 2;
-
 const FIELD_DELIM: char = '\x02';           // STX (Start of Text)
 
 enum LogField
@@ -42,6 +43,8 @@ pub struct LogLine {
 }
 
 pub struct LogParser {
+    tz: FixedOffset,
+
     // cache the last parsed timestamp for performance improvement
     last_timestamp_string: String,
     last_parsed_timestamp: String,
@@ -49,7 +52,11 @@ pub struct LogParser {
 
 impl LogParser {
     pub fn new() -> LogParser {
-        LogParser { last_timestamp_string: "".into(), last_parsed_timestamp: "".into() }
+        LogParser {
+            tz: Local.timestamp(0, 0).offset().fix(),
+            last_timestamp_string: String::new(),
+            last_parsed_timestamp: String::new(),
+        }
     }
 
     pub fn parse_async(&mut self, content: String, sender: mpsc::Sender<Vec<LogLine>>) {
@@ -66,6 +73,8 @@ impl LogParser {
     fn parse_buffer(&mut self, data: &str) -> Vec<LogLine> {
         let mut lines = Vec::<LogLine>::with_capacity(TYPICAL_LOGLINE_COUNT);
         if let Some(idx) = data.find(HEADER_END) {
+            self.parse_header(&data[0..idx]);
+
             let mut start = idx + HEADER_END_OFFSET;
             loop {
                 match data[start..].find(LOGGING_END2) {   // in case there is invalid content in the log description
@@ -87,6 +96,30 @@ impl LogParser {
             }
         }
         lines
+    }
+
+    fn parse_header(&mut self, header: &str) {
+        if let Some(start) = header.find("(UTC") {
+            if let Some(end) = header[start..].find(")") {
+                self.tz = Self::parse_timezone(&header[start + 4 .. start + end]);
+            }
+        } else {
+            println!("failed to locate timezone info! will use the local timezone instead.")
+        }
+    }
+
+    fn parse_timezone(tz: &str) -> FixedOffset {
+        if let Ok(hh) = &tz[1..3].parse::<i32>() {
+            if let Ok(mm) = &tz[4..6].parse::<i32>() {
+                if &tz[0..1] == "+" || (*hh == 0 && *mm == 0) {
+                    return FixedOffset::east(hh * HOUR + mm * MINUTE);
+                } else {
+                    return FixedOffset::west(hh * HOUR + mm * MINUTE);
+                }
+            }
+        }
+        println!("failed to parse timezone info! will use the local timezone instead.");
+        Local.timestamp(0, 0).offset().fix()
     }
 
     fn parse_line(&mut self, line: &str) -> Option<LogLine> {
@@ -194,9 +227,8 @@ impl LogParser {
         if let Ok(sec) = sec.parse::<i64>() {
             let naive = NaiveDateTime::from_timestamp(sec, 0);
             let utc: DateTime<Utc> = DateTime::from_utc(naive, Utc);
-            let local: DateTime<Local> = DateTime::from(utc);
             self.last_timestamp_string = sec.to_string();
-            self.last_parsed_timestamp = local.format("%y%m%d %H:%M:%S").to_string();
+            self.last_parsed_timestamp = utc.with_timezone(&self.tz).format("%y%m%d %H:%M:%S").to_string();
             self.last_parsed_timestamp.clone() + "." + msec
         } else {
             "INVALID_TS".into()
@@ -207,6 +239,15 @@ impl LogParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timezone_parsing() {
+        assert!(LogParser::parse_timezone("+08:00") == FixedOffset::east(8 * HOUR));
+        assert!(LogParser::parse_timezone("+00:00") == FixedOffset::east(0 * HOUR));
+        assert!(LogParser::parse_timezone("-00:00") == FixedOffset::east(0 * HOUR));
+        assert!(LogParser::parse_timezone("-07:30") == FixedOffset::west(7 * HOUR + 30 * MINUTE));
+        assert!(LogParser::parse_timezone("BAD_TZ") == Local.timestamp(0, 0).offset().fix());
+    }
 
     #[test]
     fn level_parsing() {
@@ -232,12 +273,13 @@ mod tests {
     }
 
     #[test]
-    fn three_loggings() {
-        let fields1: Vec<&str> = vec!["LOG_DEV_INFO", "1346714491516", "SRC1(1:2)", "file1.cpp", "128", "FOO1", "0X2005000000000000", "DESC1",                  "1641013262865"];
-        let fields2: Vec<&str> = vec!["LOG_DEV_INFO", "1641013262865", "SRC2(3:4)", "file2.cpp", "256", "FOO2", "0X2008000000000000", "DESC2\rMORE\nEVEN_MORE", "BAD_TIMESTAMP"];
-        let fields3: Vec<&str> = vec!["LOG_DEV_INFO", "1641013262865", "SRC3(5:6)", "file3.cpp", "512", "FOO3", "0X200A000000000000", "DESC3"                                  ];
+    fn it_works() {
+        let fields1: Vec<&str> = vec!["LOG_DEV_INFO", "1346714491516", "SRC1(1:2)", "file1.cpp", "128", "FOO1", "0X2001", "DESC1",                  "1641013262865"];
+        let fields2: Vec<&str> = vec!["LOG_DEV_INFO", "1641013262865", "SRC2(3:4)", "file2.cpp", "256", "FOO2", "0X2002", "DESC2\rMORE\nEVEN MORE", "BAD_TIMESTAMP"];
+        let fields3: Vec<&str> = vec!["LOG_DEV_INFO", "1641013262865", "SRC3(5:6)", "file3.cpp", "512", "FOO3", "0X2003", "DESC3"                                  ];
 
         let mut logfile = String::with_capacity(MAX_LOGLINE_LENGTH);
+        logfile.push_str("timezone: (UTC+08:00)");
         logfile.push_str(HEADER_END);
         logfile.push_str(fields1.join(FIELD_DELIM.to_string().as_str()).as_str());
         logfile.push_str(LOGGING_END);
@@ -252,10 +294,10 @@ mod tests {
 
         assert!(lines[0].src == "SRC1");
         assert!(lines[0].pid == "1");
-        assert!(lines[0].content.as_str() == "DEV_INFO  220101 13:01:02.865 [120904 07:21:31.516] SRC1(1:2) DESC1 [FOO1 file1.cpp 128] [0X2005000000000000]\n");
+        assert!(lines[0].content.as_str() == "DEV_INFO  220101 13:01:02.865 [120904 07:21:31.516] SRC1(1:2) DESC1 [FOO1 file1.cpp 128] [0X2001]\n");
 
         assert!(lines[1].src == "SRC2");
         assert!(lines[1].pid == "3");
-        assert!(lines[1].content.as_str() == "DEV_INFO  INVALID_TS [220101 13:01:02.865] SRC2(3:4) DESC2 MORE EVEN_MORE [FOO2 file2.cpp 256] [0X2008000000000000]\n");
+        assert!(lines[1].content.as_str() == "DEV_INFO  INVALID_TS [220101 13:01:02.865] SRC2(3:4) DESC2 MORE EVEN MORE [FOO2 file2.cpp 256] [0X2002]\n");
     }
 }
