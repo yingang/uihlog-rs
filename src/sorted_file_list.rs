@@ -1,20 +1,6 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use crate::filesystem::get_file_list;
 
-fn get_file_list(folder: &Path) -> Vec<PathBuf> {
-    let mut files: Vec<PathBuf> = Vec::new();
-    if let Ok(dir) = fs::read_dir(folder) {
-        for path in dir {
-            if let Ok(path) = path {
-                let path = path.path();
-                if path.is_file() {
-                    files.push(path); 
-                }
-            }
-        }
-    }
-    files
-}
+use std::path::{Path, PathBuf};
 
 pub struct SortedFileList {
     files: Vec<PathBuf>,

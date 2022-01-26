@@ -5,12 +5,13 @@ mod sorted_file_list;
 use sorted_file_list::SortedFileList;
 
 mod log_parser;
-use log_parser::LogParser;
-use log_parser::LogLine;
+use log_parser::{LogLine, LogParser};
+
+mod filesystem;
+use filesystem::{read_file, RealFileWriter};
 
 use std::collections::VecDeque;
 use std::env;
-use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::{BufWriter, Write};
@@ -22,15 +23,6 @@ use std::thread;
 
 // 2 or 3 is much faster than other configurations if no file writing (on CPU with 4 physical cores)
 const MAX_WORKING_THREADS: usize = 2;
-
-fn read_file(filepath: &Path) -> Option<String> {
-    if let Ok(data) = fs::read(filepath) {
-        let data = String::from_utf8_lossy(&data);  // consider log file with invalid UTF8 content
-        return Some(data.into_owned())
-    }
-    println!("failed to read from file {:?}", &filepath);
-    None
-}
 
 fn create_worker_thread(file_list: &mut SortedFileList) -> Option<Receiver<Vec<LogLine>>> {
     let (tx, rx) = mpsc::channel::<Vec<LogLine>>();
@@ -52,39 +44,34 @@ fn parse_folder(folder: &Path, pid_output: bool) -> io::Result<()> {
         println!("pid output is enabled");
     }
 
-    //let start = SystemTime::now();
     let mut file_list = SortedFileList::new(folder);
     let mut rxs: VecDeque<Receiver<Vec<LogLine>>> = VecDeque::new();
 
     let thread_count = std::cmp::min(file_list.count(), MAX_WORKING_THREADS);
     for _ in 0..thread_count {
         if let Some(rx) = create_worker_thread(&mut file_list) {
-            //println!("start a new thread at {:?} later", SystemTime::now().duration_since(start).unwrap());
             rxs.push_back(rx);
         } else {
             break
         }
     }
 
-    let mut writer = CachedWriter::new(folder.to_str().unwrap());
+    let writer = RealFileWriter::new();
+    let mut writer = CachedWriter::new(folder.to_str().unwrap(), &writer);
     loop {
         if let Some(rx) = rxs.pop_front() {
             let lines = rx.recv().unwrap();
-            //println!("a thread finished at {:?} later", SystemTime::now().duration_since(start).unwrap());
 
             if let Some(rx) = create_worker_thread(&mut file_list) {
-                //println!("start a new thread at {:?} later", SystemTime::now().duration_since(start).unwrap());
                 rxs.push_back(rx);
             }
 
-            //let start = SystemTime::now();
             for line in lines {
                 if pid_output {
                     writer.write(&line.pid, line.content.clone())?;
                 }
                 writer.write(&line.src, line.content)?;
             }
-            //println!("finished writing in {:?}", SystemTime::now().duration_since(start).unwrap());
         } else {
             break
         }
