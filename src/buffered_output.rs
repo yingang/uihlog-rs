@@ -10,14 +10,14 @@ pub trait FileWriter {
     fn write(&self, filepath: &Path, content: &String, append: bool) -> io::Result<()>;
 }
 
-pub struct CachedWriter<'a, T: FileWriter> {
+pub struct BufferedOutput<'a, T: FileWriter> {
     cache: HashMap<String, String>,
     folder: String,
     active_files: HashSet<String>,
     writer: &'a T,
 }
 
-impl<'a, T> CachedWriter<'a, T>
+impl<'a, T> BufferedOutput<'a, T>
 where T: FileWriter,
 {
     pub fn new(folder: &str, writer: &'a T) -> Self {
@@ -29,7 +29,7 @@ where T: FileWriter,
         }
     }
 
-    pub fn write(&mut self, token: &str, content: Box<String>) -> io::Result<()> {
+    pub fn send(&mut self, token: &str, content: Box<String>) -> io::Result<()> {
         if !self.cache.contains_key(token) {
             self.cache.insert(token.to_string(),
              String::with_capacity(OUTPUT_FLUSH_THRESHOLD + MAX_PARSED_LOGLINE_LENGTH));
@@ -39,12 +39,12 @@ where T: FileWriter,
         cache.push_str(&content);
 
         if cache.len() > OUTPUT_FLUSH_THRESHOLD {
-            self.do_write(token)?;
+            self.do_send(token)?;
         }
         Ok(())
     }
 
-    fn do_write(&mut self, token: &str) -> io::Result<()> {
+    fn do_send(&mut self, token: &str) -> io::Result<()> {
         let mut filepath = PathBuf::from(&self.folder);
         filepath.push(token.to_string() + ".txt");
         let cache = self.cache.get_mut(token).unwrap();
@@ -62,7 +62,7 @@ where T: FileWriter,
     pub fn flush(&mut self) -> io::Result<()> {
         let tokens: Vec<String> = self.cache.keys().cloned().collect();
         for token in tokens {
-            self.do_write(token.as_str())?;
+            self.do_send(token.as_str())?;
         }
         Ok(())
     }
@@ -135,22 +135,22 @@ mod tests {
         const TOKEN: &str = "BAR";
         const FILEPATH:& str = "FOO\\BAR.txt";
         let mock_writer = MockFileWriter::new();
-        let mut cached_writer = CachedWriter::new("FOO", &mock_writer);
+        let mut output = BufferedOutput::new("FOO", &mock_writer);
         let data = Box::new(String::from_utf8(vec![0u8; 1024]).unwrap());
 
         for _ in 0..(1024 * 2 - 1) {
-            cached_writer.write(TOKEN, data.clone()).unwrap();
+            output.send(TOKEN, data.clone()).unwrap();
         }
         assert!(mock_writer.file_exists(String::from(FILEPATH)) == false);
 
         for _ in 0..2 {
-            cached_writer.write(TOKEN, data.clone()).unwrap();
+            output.send(TOKEN, data.clone()).unwrap();
         }
         assert!(mock_writer.get_file_length(String::from(FILEPATH)) == (1024 *2 + 1) * 1024);
         assert!(mock_writer.get_file_written_times(String::from(FILEPATH)) == 1);
 
-        cached_writer.write(TOKEN, data.clone()).unwrap();
-        cached_writer.flush().unwrap();
+        output.send(TOKEN, data.clone()).unwrap();
+        output.flush().unwrap();
         assert!(mock_writer.get_file_length(String::from(FILEPATH)) == (1024 *2 + 2) * 1024);
         assert!(mock_writer.get_file_written_times(String::from(FILEPATH)) == 2);
     }

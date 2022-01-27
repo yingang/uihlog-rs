@@ -1,4 +1,4 @@
-use crate::cached_writer::FileWriter;
+use crate::buffered_output::FileWriter;
 
 use std::fs;
 use std::fs::OpenOptions;

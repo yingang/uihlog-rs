@@ -1,14 +1,12 @@
-mod cached_writer;
-use cached_writer::CachedWriter;
-
-mod sorted_file_list;
-use sorted_file_list::SortedFileList;
-
+mod buffered_output;
+mod file_system;
 mod log_parser;
-use log_parser::{LogLine, LogParser};
+mod sorted_file_list;
 
-mod filesystem;
-use filesystem::{read_file, RealFileWriter};
+use buffered_output::BufferedOutput;
+use file_system::{read_file, RealFileWriter};
+use log_parser::{LogLine, LogParser};
+use sorted_file_list::SortedFileList;
 
 use std::collections::VecDeque;
 use std::env;
@@ -18,17 +16,17 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
-use std::time::SystemTime;
 use std::thread;
+use std::time::SystemTime;
 
 // 2 or 3 is much faster than other configurations if no file writing (on CPU with 4 physical cores)
 const MAX_WORKING_THREADS: usize = 2;
 
 fn create_worker_thread(file_list: &mut SortedFileList) -> Option<Receiver<Vec<LogLine>>> {
-    let (tx, rx) = mpsc::channel::<Vec<LogLine>>();
     if let Some(path) = file_list.next() {
         println!("{:?}", &path.as_path().file_name().unwrap());
         if let Some(content) = read_file(&path) {
+            let (tx, rx) = mpsc::channel::<Vec<LogLine>>();
             thread::spawn(move || {
                 let mut parser = LogParser::new();
                 parser.parse_async(content, tx);
@@ -52,12 +50,12 @@ fn parse_folder(folder: &Path, pid_output: bool) -> io::Result<()> {
         if let Some(rx) = create_worker_thread(&mut file_list) {
             rxs.push_back(rx);
         } else {
-            break
+            break;
         }
     }
 
     let writer = RealFileWriter::new();
-    let mut writer = CachedWriter::new(folder.to_str().unwrap(), &writer);
+    let mut output = BufferedOutput::new(folder.to_str().unwrap(), &writer);
     loop {
         if let Some(rx) = rxs.pop_front() {
             let lines = rx.recv().unwrap();
@@ -68,15 +66,15 @@ fn parse_folder(folder: &Path, pid_output: bool) -> io::Result<()> {
 
             for line in lines {
                 if pid_output {
-                    writer.write(&line.pid, line.content.clone())?;
+                    output.send(&line.pid, line.content.clone())?;
                 }
-                writer.write(&line.src, line.content)?;
+                output.send(&line.src, line.content)?;
             }
         } else {
-            break
+            break;
         }
     }
-    writer.flush()?;
+    output.flush()?;
     Ok(())
 }
 
@@ -122,5 +120,8 @@ fn main() {
             println!("failed to parse the file");
         }
     }
-    println!("total cost: {:?}", SystemTime::now().duration_since(start).unwrap());
+    println!(
+        "total cost: {:?}",
+        SystemTime::now().duration_since(start).unwrap()
+    );
 }
