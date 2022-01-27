@@ -239,6 +239,7 @@ impl LogParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc;
 
     #[test]
     fn timezone_parsing() {
@@ -289,7 +290,9 @@ mod tests {
         logfile.push_str(LOGGING_END);
 
         let mut parser = LogParser::new();
-        let lines = parser.parse_sync(logfile);
+        let (tx, rx) = mpsc::channel::<Vec<LogLine>>();
+        parser.parse_async(logfile, tx);
+        let lines = rx.recv().unwrap();
         assert!(lines.len() == 2);
 
         assert!(lines[0].src == "SRC1");

@@ -137,15 +137,21 @@ mod tests {
         let mock_writer = MockFileWriter::new();
         let mut cached_writer = CachedWriter::new("FOO", &mock_writer);
         let data = Box::new(String::from_utf8(vec![0u8; 1024]).unwrap());
+
         for _ in 0..(1024 * 2 - 1) {
             cached_writer.write(TOKEN, data.clone()).unwrap();
         }
         assert!(mock_writer.file_exists(String::from(FILEPATH)) == false);
+
         for _ in 0..2 {
             cached_writer.write(TOKEN, data.clone()).unwrap();
         }
-        assert!(mock_writer.file_exists(String::from(FILEPATH)) == true);
         assert!(mock_writer.get_file_length(String::from(FILEPATH)) == (1024 *2 + 1) * 1024);
         assert!(mock_writer.get_file_written_times(String::from(FILEPATH)) == 1);
+
+        cached_writer.write(TOKEN, data.clone()).unwrap();
+        cached_writer.flush().unwrap();
+        assert!(mock_writer.get_file_length(String::from(FILEPATH)) == (1024 *2 + 2) * 1024);
+        assert!(mock_writer.get_file_written_times(String::from(FILEPATH)) == 2);
     }
 }
