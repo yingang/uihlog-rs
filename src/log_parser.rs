@@ -61,8 +61,8 @@ impl LogParser {
 
     pub fn parse_async(&mut self, content: String, sender: mpsc::Sender<Vec<LogLine>>) {
         let lines = self.parse_buffer(&content);
-        if let Err(_) = sender.send(lines) {
-            println!("failed to send parsed result!");
+        if let Err(e) = sender.send(lines) {
+            println!("failed to send parsed result! {}", e.to_string());
         }
     }
 

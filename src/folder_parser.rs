@@ -1,4 +1,4 @@
-use crate::buffered_output::{BufferedOutput};
+use crate::buffered_output::BufferedOutput;
 use crate::file_system::{read_file, RealFileWriter};
 use crate::log_parser::{LogLine, LogParser};
 use crate::sorted_file_list::SortedFileList;
@@ -41,6 +41,7 @@ pub fn parse_folder(folder: &Path, pid_output: bool) -> io::Result<()> {
         if let Some(rx) = create_worker_thread(&mut file_list) {
             rxs.push_back(rx);
         } else {
+            println!("failed to initialize parsing tasks");
             break;
         }
     }

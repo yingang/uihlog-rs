@@ -33,12 +33,12 @@ fn main() {
 
     let start = SystemTime::now();
     if path.is_dir() {
-        if let Err(_) = parse_folder(&path, need_pid_output()) {
-            println!("failed to parse the folder");
+        if let Err(e) = parse_folder(&path, need_pid_output()) {
+            println!("failed to parse the folder: {}", e.to_string());
         }
     } else if path.is_file() {
-        if let Err(_) = parse_file(&path) {
-            println!("failed to parse the file");
+        if let Err(e) = parse_file(&path) {
+            println!("failed to parse the file: {}", e.to_string());
         }
     }
     println!(
