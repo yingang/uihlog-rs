@@ -42,20 +42,20 @@ impl RealFileWriter {
 impl FileWriter for RealFileWriter {
     fn write(&self, filepath: &Path, content: &String, append: bool) -> io::Result<()> {
         let result = match append {
-            true => OpenOptions::new().append(true).open(filepath),
-            false => OpenOptions::new().write(true).truncate(true).open(filepath),
+            true => OpenOptions::new().write(true).append(true).open(filepath),
+            false => OpenOptions::new().write(true).create(true).truncate(true).open(filepath),
         };
 
         match result {
             Ok(mut f) => match f.write(&content.as_bytes()) {
                 Ok(_) => { return Ok(()); },
                 Err(e) => {
-                    println!("failed to write file: {:?}, {}", filepath, e.to_string());
+                    println!("failed to write file {:?}: {}", filepath, e.to_string());
                     return Err(e);
                 }
             },
             Err(e) => {
-                println!("failed to open file: {:?}, {}", filepath, e.to_string());
+                println!("failed to open file {:?}: {}", filepath, e.to_string());
                 return Err(e);
             }
         }
