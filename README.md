@@ -11,7 +11,7 @@ There should be no UIH proprietary information that has been used in this projec
 ### Why
 
 * The raw log files are organized in time order, so it's not easy to see through the event stream of any specific logging source.
-* Non-character delimiters have been used in the raw log files, which some human readers like me don't like to see at all.
+* Non-printable ASCII character have been used in the raw log files, which some human readers like me don't like to see at all.
 * Unix timestamp has been used in the raw log files, which, I suppose, most human reader should not be fond of.
 
 ### What
