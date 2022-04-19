@@ -25,7 +25,7 @@ There should be no UIH proprietary information that has been used in this projec
 
  * Copy `uihlog.exe` into the folder with raw log files and run it, then all the parsed log files would show up (only by log source).
 
-### Modern Way
+### Integrated Way
 
 * Keep `uihlog.exe` and the batch scripts under `utils` in the same folder on your computer.
 * Run `install.bat` to integrate `uihlog.exe` into context menu (shell extension), which could be undone by running `uninstall.bat`.
